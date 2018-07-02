@@ -1,0 +1,338 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+Note: All these models are built out of the PIE Chart data which has their answers flipped.
+
+#Setup
+
+```{r}
+library(loo)
+library(rstan)
+library(rstanarm)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+```
+
+```{r}
+kfold <- function(log_lik_heldout)  {
+  library(matrixStats)
+  logColMeansExp <- function(x) {
+    # should be more stable than log(colMeans(exp(x)))
+    S <- nrow(x)
+    colLogSumExps(x) - log(S)
+  }
+  # See equation (20) of @VehtariEtAl2016
+  pointwise <-  matrix(logColMeansExp(log_lik_heldout), ncol= 1)
+  colnames(pointwise) <- "elpd"
+  # See equation (21) of @VehtariEtAl2016
+  elpd_kfold <- sum(pointwise)
+  se_elpd_kfold <-  sqrt(ncol(log_lik_heldout) * var(pointwise))
+  out <- list(
+  pointwise = pointwise,
+  elpd_kfold = elpd_kfold,
+  se_elpd_kfold = se_elpd_kfold)
+  structure(out, class = "loo")
+}
+```
+
+#1-segment Single Cycle Model: Fitting
+```{r}
+log_lik_total_participant <- matrix(, nrow = 500, ncol = 1)
+  
+#Randomly shuffle the data
+kfold_pie<-flipped_pie[sample(nrow(flipped_pie)),]
+
+#Create 5 equally size folds
+folds <- cut(seq(1,nrow(kfold_pie)),breaks=5,labels=FALSE)
+
+#Perform 5 fold cross validation
+for(i in 1:5){
+    #Segement your data by fold using the which() function 
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    testData <- kfold_pie[testIndexes, ]
+    trainData <- kfold_pie[-testIndexes, ]
+    flipped_pie_data_m = list(
+      nt = length(trainData$correct_ans), 
+      correct_ans_t = trainData$correct_ans/100, 
+      response_t = trainData$flipped_ans/100, 
+      kt = length(unique(trainData$subjectID)),
+      participant_t = trainData$subjectID,
+      nh = length(testData$correct_ans), 
+      correct_ans_h = testData$correct_ans/100, 
+      response_h = testData$flipped_ans/100, 
+      kh = length(unique(testData$subjectID)),
+      participant_h = testData$subjectID,
+      k = max(flipped_pie$subjectID), 
+      segments = 1
+    )
+    fit_obj <- stan(file = 'models/kfold_models/kfold_single_cycle_model.stan', data = flipped_pie_data_m, iter = 1000, chains = 1, verbose=TRUE)
+    log_lik_single_cycle <- extract_log_lik(fit_obj, parameter_name = "log_lik_h")
+    log_lik_single_cycle <- cbind(log_lik_total_participant, log_lik_single_cycle)
+}
+
+#Remove NA column
+log_lik_single_cycle <- log_lik_single_cycle[, -1]
+
+```
+
+#2-segment Single Cycle Model: Fitting
+```{r}
+log_lik_total_participant <- matrix(, nrow = 500, ncol = 1)
+  
+#Randomly shuffle the data
+kfold_pie<-flipped_pie[sample(nrow(flipped_pie)),]
+
+#Create 5 equally size folds
+folds <- cut(seq(1,nrow(kfold_pie)),breaks=5,labels=FALSE)
+
+#Perform 5 fold cross validation
+for(i in 1:5){
+    #Segement your data by fold using the which() function 
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    testData <- kfold_pie[testIndexes, ]
+    trainData <- kfold_pie[-testIndexes, ]
+    flipped_pie_data_m = list(
+      nt = length(trainData$correct_ans), 
+      correct_ans_t = trainData$correct_ans/100, 
+      response_t = trainData$flipped_ans/100, 
+      kt = length(unique(trainData$subjectID)),
+      participant_t = trainData$subjectID,
+      nh = length(testData$correct_ans), 
+      correct_ans_h = testData$correct_ans/100, 
+      response_h = testData$flipped_ans/100, 
+      kh = length(unique(testData$subjectID)),
+      participant_h = testData$subjectID,
+      k = max(flipped_pie$subjectID), 
+      segments = 2
+    )
+    fit_obj <- stan(file = 'models/kfold_models/kfold_single_cycle_model.stan', data = flipped_pie_data_m, iter = 1000, chains = 1, verbose=TRUE)
+    log_lik_single_cycle_2 <- extract_log_lik(fit_obj, parameter_name = "log_lik_h")
+    log_lik_single_cycle_2 <- cbind(log_lik_total_participant, log_lik_single_cycle_2)
+}
+
+#Remove NA column
+log_lik_single_cycle_2 <- log_lik_single_cycle_2[, -1]
+
+```
+
+#4-segment Single Cycle Model: Fitting
+```{r}
+log_lik_total_participant <- matrix(, nrow = 500, ncol = 1)
+  
+#Randomly shuffle the data
+kfold_pie<-flipped_pie[sample(nrow(flipped_pie)),]
+
+#Create 5 equally size folds
+folds <- cut(seq(1,nrow(kfold_pie)),breaks=5,labels=FALSE)
+
+#Perform 5 fold cross validation
+for(i in 1:5){
+    #Segement your data by fold using the which() function 
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    testData <- kfold_pie[testIndexes, ]
+    trainData <- kfold_pie[-testIndexes, ]
+    flipped_pie_data_m = list(
+      nt = length(trainData$correct_ans), 
+      correct_ans_t = trainData$correct_ans/100, 
+      response_t = trainData$flipped_ans/100, 
+      kt = length(unique(trainData$subjectID)),
+      participant_t = trainData$subjectID,
+      nh = length(testData$correct_ans), 
+      correct_ans_h = testData$correct_ans/100, 
+      response_h = testData$flipped_ans/100, 
+      kh = length(unique(testData$subjectID)),
+      participant_h = testData$subjectID,
+      k = max(flipped_pie$subjectID), 
+      segments = 4
+    )
+    fit_obj <- stan(file = 'models/kfold_models/kfold_single_cycle_model.stan', data = flipped_pie_data_m, iter = 1000, chains = 1, verbose=TRUE)
+    log_lik_single_cycle_4 <- extract_log_lik(fit_obj, parameter_name = "log_lik_h")
+    log_lik_single_cycle_4 <- cbind(log_lik_total_participant, log_lik_single_cycle_4)
+}
+
+#Remove NA column
+log_lik_single_cycle_4 <- log_lik_single_cycle_4[, -1]
+
+```
+
+#Weighted Cycles Model: Fitting
+```{r}
+log_lik_total_participant <- matrix(, nrow = 500, ncol = 1)
+  
+#Randomly shuffle the data
+kfold_pie<-flipped_pie[sample(nrow(flipped_pie)),]
+
+#Create 5 equally size folds
+folds <- cut(seq(1,nrow(kfold_pie)),breaks=5,labels=FALSE)
+
+#Perform 5 fold cross validation
+for(i in 1:5){
+    #Segement your data by fold using the which() function 
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    testData <- kfold_pie[testIndexes, ]
+    trainData <- kfold_pie[-testIndexes, ]
+    flipped_pie_data_m = list(
+      nt = length(trainData$correct_ans), 
+      correct_ans_t = trainData$correct_ans/100, 
+      response_t = trainData$flipped_ans/100, 
+      kt = length(unique(trainData$subjectID)),
+      participant_t = trainData$subjectID,
+      nh = length(testData$correct_ans), 
+      correct_ans_h = testData$correct_ans/100, 
+      response_h = testData$flipped_ans/100, 
+      kh = length(unique(testData$subjectID)),
+      participant_h = testData$subjectID,
+      k = max(flipped_pie$subjectID), 
+      segments = c(1,2,4), 
+      number_segments = 3
+    )
+    fit_obj <- stan(file = 'models/kfold_models/kfold_weighted_cycles_model.stan', data = flipped_pie_data_m, iter = 1000, chains = 1, verbose=TRUE)
+    log_lik <- extract_log_lik(fit_obj, parameter_name = "log_lik_h")
+    log_lik_weighted_cycles <- cbind(log_lik_total_participant, log_lik)
+}
+
+log_lik_weighted_cycles <- log_lik_weighted_cycles[, -1]
+
+```
+
+#Individual Power Pooled Weight Model: Fitting
+```{r}
+log_lik_total_participant <- matrix(, nrow = 500, ncol = 1)
+  
+#Randomly shuffle the data
+kfold_pie<-flipped_pie[sample(nrow(flipped_pie)),]
+
+#Create 5 equally size folds
+folds <- cut(seq(1,nrow(kfold_pie)),breaks=5,labels=FALSE)
+
+#Perform 5 fold cross validation
+for(i in 1:5){
+    #Segement your data by fold using the which() function 
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    testData <- kfold_pie[testIndexes, ]
+    trainData <- kfold_pie[-testIndexes, ]
+    flipped_pie_data_m = list(
+      nt = length(trainData$correct_ans), 
+      correct_ans_t = trainData$correct_ans/100, 
+      response_t = trainData$flipped_ans/100, 
+      kt = length(unique(trainData$subjectID)),
+      participant_t = trainData$subjectID,
+      nh = length(testData$correct_ans), 
+      correct_ans_h = testData$correct_ans/100, 
+      response_h = testData$flipped_ans/100, 
+      kh = length(unique(testData$subjectID)),
+      participant_h = testData$subjectID,
+      k = max(flipped_pie$subjectID), 
+      segments = c(1,2,4), 
+      number_segments = 3
+    )
+    fit_obj <- stan(file = 'models/kfold_models/kfold_pooled_wts_indv_power_model.stan', data = flipped_pie_data_m, iter = 1000, chains = 1, verbose=TRUE)
+    log_lik_indv_power_pooled_weight <- extract_log_lik(fit_obj, parameter_name = "log_lik_h")
+    log_lik_indv_power_pooled_weight <- cbind(log_lik_total_participant, log_lik_indv_power_pooled_weight)
+}
+
+#Remove NA Column
+log_lik_indv_power_pooled_weight <- log_lik_indv_power_pooled_weight[, -1]
+
+```
+
+#Individual Weight Pooled Power Model: Fitting
+```{r}
+log_lik_total_participant <- matrix(, nrow = 500, ncol = 1)
+  
+#Randomly shuffle the data
+kfold_pie<-flipped_pie[sample(nrow(flipped_pie)),]
+
+#Create 5 equally size folds
+folds <- cut(seq(1,nrow(kfold_pie)),breaks=5,labels=FALSE)
+
+#Perform 5 fold cross validation
+for(i in 1:5){
+    #Segement your data by fold using the which() function 
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    testData <- kfold_pie[testIndexes, ]
+    trainData <- kfold_pie[-testIndexes, ]
+    flipped_pie_data_m = list(
+      nt = length(trainData$correct_ans), 
+      correct_ans_t = trainData$correct_ans/100, 
+      response_t = trainData$flipped_ans/100, 
+      kt = length(unique(trainData$subjectID)),
+      participant_t = trainData$subjectID,
+      nh = length(testData$correct_ans), 
+      correct_ans_h = testData$correct_ans/100, 
+      response_h = testData$flipped_ans/100, 
+      kh = length(unique(testData$subjectID)),
+      participant_h = testData$subjectID,
+      k = max(flipped_pie$subjectID), 
+      segments = c(1,2,4), 
+      number_segments = 3
+    )
+    fit_obj <- stan(file = 'models/kfold_models/kfold_indv_wts_pooled_power_model.stan', data = flipped_pie_data_m, iter = 1000, chains = 1, verbose=TRUE)
+    log_lik_indv_weight_pooled_power <- extract_log_lik(fit_obj, parameter_name = "log_lik_h")
+    log_lik_indv_weight_pooled_power <- cbind(log_lik_total_participant, log_lik_indv_weight_pooled_power)
+}
+
+#Remove NA Column
+log_lik_indv_weight_pooled_power <- log_lik_indv_weight_pooled_power[, -1]
+
+```
+
+#Individual Weight Individual Power Model: Fitting
+```{r}
+log_lik_total_participant <- matrix(, nrow = 500, ncol = 1)
+  
+#Randomly shuffle the data
+kfold_pie<-flipped_pie[sample(nrow(flipped_pie)),]
+
+#Create 5 equally size folds
+folds <- cut(seq(1,nrow(kfold_pie)),breaks=5,labels=FALSE)
+
+#Perform 5 fold cross validation
+for(i in 1:5){
+    #Segement your data by fold using the which() function 
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    testData <- kfold_pie[testIndexes, ]
+    trainData <- kfold_pie[-testIndexes, ]
+    flipped_pie_data_m = list(
+      nt = length(trainData$correct_ans), 
+      correct_ans_t = trainData$correct_ans/100, 
+      response_t = trainData$flipped_ans/100, 
+      kt = length(unique(trainData$subjectID)),
+      participant_t = trainData$subjectID,
+      nh = length(testData$correct_ans), 
+      correct_ans_h = testData$correct_ans/100, 
+      response_h = testData$flipped_ans/100, 
+      kh = length(unique(testData$subjectID)),
+      participant_h = testData$subjectID,
+      k = max(flipped_pie$subjectID), 
+      segments = c(1,2,4), 
+      number_segments = 3
+    )
+    fit_obj <- stan(file = 'models/kfold_models/kfold_indv_wts_and_power_model.stan', data = flipped_pie_data_m, iter = 1000, chains = 1, verbose=TRUE)
+    log_lik_indv_power_indv_weight <- extract_log_lik(fit_obj, parameter_name = "log_lik_h")
+    log_lik_indv_power_indv_weight <- cbind(log_lik_total_participant, log_lik_indv_power_indv_weight)
+}
+
+#Remove NA Column
+log_lik_indv_power_indv_weight <- log_lik_indv_power_indv_weight[, -1]
+
+```
+
+
+#Model Weights
+```{r}
+#kfold_weighted_cycles <- kfold(log_lik_weighted_cycles)
+#kfold_indv_power_pooled_weight <- kfold(log_lik_indv_power_pooled_weight)
+#kfold_indv_weight_pooled_power <- kfold(log_lik_indv_weight_pooled_power)
+#kfold_indv_power_indv_weight <- kfold(log_lik_indv_power_indv_weight)
+
+#compare(kfold_weighted_cycles, kfold_indv_power_pooled_weight, kfold_indv_weight_pooled_power, kfold_indv_power_indv_weight )
+
+loo_model_weights(list(log_lik_single_cycle, log_lik_single_cycle_2, log_lik_single_cycle_4, log_lik_weighted_cycles,log_lik_indv_power_pooled_weight, log_lik_indv_weight_pooled_power, log_lik_indv_power_indv_weight),method="stacking")
+
+
+```
+
+
+

@@ -1,0 +1,327 @@
+#Setup
+```{r}
+devtools::install_github("mjskay/tidybayes")
+install.packages("rstan", repos = "https://cloud.r-project.org/", dependencies=TRUE)
+
+
+library(dplyr)
+library(ggplot2)
+library(tidybayes)
+library(rstan)
+library(devtools)
+library(StanHeaders)
+
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+```
+
+#PIE CHART
+## Flipping Results
+```{r}
+ggplot(pie, aes(x = `distance from correct answer`, y = `distance from opposite answer`)) + 
+  geom_point() + 
+  geom_vline(xintercept = 7) + 
+  geom_abline(intercept = 0, slope = 1) + 
+  geom_point(aes(color = "red"), data = subset(pie, (`distance from correct answer` > 7) & (`distance from opposite answer` < `distance from correct answer`))) +
+  ggtitle('Flipping for Pie Chart')+
+    theme_minimal()
+```
+
+```{r}
+simplevis <- read_excel("~/Desktop/Research Work/simplevis.xls")
+bar <- subset(simplevis, Type == 'bars')
+pie <- subset(simplevis, Type == 'piechart')
+donut <- subset(simplevis, Type == 'donut')
+
+
+```
+
+##Single Cycle Model
+###1-Cycles
+```{r}
+pie_data = list(n = length(pie$ID), correct_ans = pie$Value/100, response = pie$flipped_ans/100, segments=1)
+
+fit11_pie <- stan(file = 'models/single_cycle_model.stan', data = pie_data, iter = 1000, chains = 1, verbose=TRUE)
+
+model <- stan_model(file = 'models/single_cycle_model.stan') 
+
+
+fit11_pie_data <- spread_samples(fit11_pie, b)
+unique_correct_ans <- unique(pie$Value)
+fit11_pie_data <- merge(fit11_pie_data, unique_correct_ans, all=TRUE)
+
+segments <- c(1);
+#update this with segments used in the model
+
+fit11_pie_data <- fit11_pie_data%>%
+  mutate(
+    correct_ans = y/100, 
+    riminus_value = floor((correct_ans)*segments[1])*(1/segments[1]),
+    ri_value = riminus_value + 1/segments[1],
+    p = (((correct_ans - riminus_value)^b)/((correct_ans - riminus_value)^b+(ri_value - correct_ans)^b)*(1/segments[1]) + (riminus_value))*100,
+    )
+
+fit11_pie_data %>%
+  ggplot(aes(x = y)) +
+  stat_lineribbon(aes(y = (p-y)), .prob = c(.99, .95, .8, .5)) +
+  geom_point(aes(y = (flipped_ans - Value), x = Value ), data = pie) +
+  scale_fill_brewer() +
+  ggtitle("1-cycle Cyclical Power Mode")+
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+```
+
+###2-Cycles
+```{r}
+pie_data = list(n = length(pie$ID), correct_ans = pie$Value/100, response = pie$flipped_ans/100, segments=2)
+fit12_pie <- stan(file = 'models/single_cycle_model.stan', data = pie_data, iter = 1000, chains = 1, verbose=TRUE)
+
+fit12_pie_data <- spread_samples(fit12_pie, b)
+unique_correct_ans <- unique(pie$Value)
+fit12_pie_data <- merge(fit12_pie_data, unique_correct_ans, all=TRUE)
+
+segments <- c(2);
+#update this with segments used in the model
+
+fit12_pie_data <- fit12_pie_data%>%
+  mutate(
+    correct_ans = y/100, 
+    riminus_value = floor((correct_ans)*segments[1])*(1/segments[1]),
+    ri_value = riminus_value + 1/segments[1],
+    p = (((correct_ans - riminus_value)^b)/((correct_ans - riminus_value)^b+(ri_value - correct_ans)^b)*(1/segments[1]) + (riminus_value))*100,
+    )
+
+fit12_pie_data %>%
+  ggplot(aes(x = y)) +
+  stat_lineribbon(aes(y = (p-y)), .prob = c(.99, .95, .8, .5)) +
+  geom_point(aes(y = (flipped_ans - Value), x = Value ), data = pie) +
+  scale_fill_brewer() +
+  ggtitle("2-cycle Cyclical Power Model")+
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+```
+
+
+
+###4-Cycles
+```{r}
+pie_data = list(n = length(pie$ID), correct_ans = pie$Value/100, response = pie$flipped_ans/100, segments=4)
+fit14_pie <- stan(file = 'models/single_cycle_model.stan', data = pie_data, iter = 1000, chains = 1, verbose=TRUE)
+
+fit14_pie_data <- spread_samples(fit14_pie, b)
+unique_correct_ans <- unique(pie$Value)
+fit14_pie_data <- merge(fit14_pie_data, unique_correct_ans, all=TRUE)
+
+segments <- c(4);
+#update this with segments used in the model
+
+fit14_pie_data <- fit14_pie_data%>%
+  mutate(
+    correct_ans = y/100, 
+    riminus_value = floor((correct_ans)*segments[1])*(1/segments[1]),
+    ri_value = riminus_value + 1/segments[1],
+    p = (((correct_ans - riminus_value)^b)/((correct_ans - riminus_value)^b+(ri_value - correct_ans)^b)*(1/segments[1]) + (riminus_value))*100,
+    )
+
+fit14_pie_data %>%
+  ggplot(aes(x = y)) +
+  stat_lineribbon(aes(y = (p-y)), .prob = c(.99, .95, .8, .5)) +
+  geom_point(aes(y = (flipped_ans - Value), x = Value ), data = pie) +
+  scale_fill_brewer() +
+  ggtitle("4-cycle Cyclical Power Mode")+
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+```
+
+##Weighted Cycles Model
+```{r}
+
+pie_data = list(n = length(pie$ID), number_segments = 3, correct_ans = pie$Value/100, response = pie$flipped_ans/100, segments = c(1,2,4))
+
+fit2_pie <- stan(file = 'models/weighted_cycles_model.stan', data = pie_data, iter = 1000, chains = 1, verbose=TRUE)
+
+#building the new DB
+b_and_p <- as.matrix(fit2_pie, pars = c("prob_segment", "b" ))
+fit_data_m <- as.data.frame(b_and_p)
+
+unique_correct_ans <- as.data.frame(unique(pie$Value))
+fit_data_m <- cbind(fit_data_m, correct_ans = rep(unique_correct_ans$`unique(pie$Value)`, each = nrow(fit_data_m)))
+
+fit_data_m
+
+    b = fit_data_m$b
+    prob_segment1 = fit_data_m$`prob_segment[1]`
+    prob_segment2 = fit_data_m$`prob_segment[2]`
+    prob_segment3 = fit_data_m$`prob_segment[3]`
+    segment1 = 1
+    segment2 = 2
+    segment3 = 4
+    correct_ans = fit_data_m$correct_ans/100
+
+    riminus_value1 = floor(correct_ans*segment1)*(1/segment1);
+    ri_value1 = riminus_value1 + 1/segment1;
+    p1 = ((correct_ans - riminus_value1)^b)/((correct_ans - riminus_value1)^b+(ri_value1 - correct_ans)^b)*(1/segment1) + (riminus_value1);
+
+    riminus_value2 = floor(correct_ans*segment2)*(1/segment2);
+    ri_value2 = riminus_value2 + 1/segment2;
+    p2 = ((correct_ans - riminus_value2)^b)/((correct_ans - riminus_value2)^b+(ri_value2 - correct_ans)^b)*(1/segment2) + (riminus_value2);
+
+    riminus_value3 = floor(correct_ans*segment3)*(1/segment3);
+    ri_value3 = riminus_value3 + 1/segment3;
+    p3 = ((correct_ans - riminus_value3)^b)/((correct_ans - riminus_value3)^b+(ri_value3 - correct_ans)^b)*(1/segment3) + (riminus_value3);
+    fit_data_m$p = (prob_segment1*p1 + prob_segment2*p2 + prob_segment3*p3)*100;
+    
+  fit_data_m %>%
+  ggplot(aes(x = correct_ans)) +
+  stat_lineribbon(aes(y = (p-correct_ans)), .prob = c(.99, .95, .8, .5)) +
+ # geom_point(aes(y = (flipped_ans - correct_ans), x = correct_ans ), data = flipped_pie_angle) +
+  stat_smooth(data=pie, aes(x =Value, y =(flipped_ans-Value) ) , color = "green", span = .3) +
+  stat_summary(fun.data = "mean_se", geom="pointrange", data = pie, aes(x =Value, y =(flipped_ans-Value))) +
+  scale_fill_brewer() +
+  ggtitle("Pie Mixture Model (1-cycle,2-cycle,4-cycle)") +
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+    
+    mean(fit_data_m$`prob_segment[1]`)
+    mean(fit_data_m$`prob_segment[2]`)
+    mean(fit_data_m$`prob_segment[3]`)
+    
+```
+
+```{r}
+cuts <- c(0, seq(0.025, max(pie$flipped_ans/100)+0.05, by=0.05), Inf)
+pie2 <- transform(pie, class=cut(flipped_ans/100, cuts, right=FALSE))
+summary(pie2)
+pie2 <- transform(pie2, ycat=as.integer(class))
+head(pie2, 25)
+```
+
+
+
+##Individual Power, Pooled Weights Model (CHECK)
+```{r}
+pie_data = list(n = length(pie$ID), correct_ans = pie$Value/100, response = pie$flipped_ans/100, segments = c(1,2,4), number_segments = 3, participant = pie$ID, k = max(pie$ID))
+
+fit3_pie <- stan(file ='models/pooled_wts_indv_power.stan' , data = pie_data, iter = 1000, chains = 1, verbose=TRUE)
+
+fit_data_pie_p <- spread_samples(fit3_pie, b[participant_ID], prob_segment[segment])
+
+unique_correct_ans <- unique(pie$Value)
+
+fit_data_pie_p_f <- merge(fit_data_pie_p, unique_correct_ans, all=TRUE)
+# y stands for the correct answer
+
+segments <- c(1,2,4);
+#update this with segments used in the model
+
+final_data <- fit_data_pie_p_f%>%
+  mutate(
+    correct_ans = y/100, 
+    riminus_value = floor((correct_ans)*segments[segment])*(1/segments[segment]),
+    ri_value = riminus_value + 1/segments[segment],
+    p = ((correct_ans - riminus_value)^b)/((correct_ans - riminus_value)^b+(ri_value - correct_ans)^b)*(1/segments[segment]) + (riminus_value),
+    weighted_p = p*prob_segment*100
+    ) %>%
+      group_by(.chain, .iteration, participant_ID, b, y) %>%
+        summarise(final_p = sum(weighted_p)) 
+
+## Changed column name!
+colnames(pie)[1] <- "participant_ID"
+
+final_data %>%
+  filter(participant_ID <= 10) %>%
+    ggplot(aes(x = y)) +
+      stat_lineribbon(aes(y = (y-final_p)), .prob = c(.99, .95, .8, .5)) +
+      scale_fill_brewer() +
+      facet_wrap( ~ participant_ID, nrow = 2, ncol = 5 ) + 
+      geom_point(aes (y = (Value - flipped_ans), x=Value ), data= subset(pie, participant_ID <= 10 )) +
+  ggtitle("Indivdual Power, Pooled Weights Model for Particpants 1-10") +
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+
+```
+
+##Pooled Power, Individual Weights Model
+```{r}
+fit4_pie <- stan(file = 'models/indv_wts_pooled_power_model.stan', data = pie_data, iter = 1000, chains = 1, verbose=TRUE)
+
+fit_data_pie_p <- spread_samples(fit4_pie, b, prob_segment[participant_ID][segment])
+
+unique_correct_ans <- unique(pie$Value)
+
+fit_data_pie_p_f <- merge(fit_data_pie_p, unique_correct_ans, all=TRUE)
+# y stands for the correct answer
+
+segments <- c(1,2,4);
+#update this with segments used in the model
+
+final_data <- fit_data_pie_p_f%>%
+  mutate(
+    correct_ans = y/100, 
+    riminus_value = floor((correct_ans)*segments[segment])*(1/segments[segment]),
+    ri_value = riminus_value + 1/segments[segment],
+    p = ((correct_ans - riminus_value)^b)/((correct_ans - riminus_value)^b+(ri_value - correct_ans)^b)*(1/segments[segment]) + (riminus_value),
+    weighted_p = p*prob_segment*100
+    ) %>%
+      group_by(.chain, .iteration, b, participant_ID, y) %>%
+        summarise(final_p = sum(weighted_p)) 
+
+## Changed column name!
+colnames(pie)[1] <- "participant_ID"
+
+final_data %>%
+  filter(participant_ID <= 10) %>%
+    ggplot(aes(x = y)) +
+      stat_lineribbon(aes(y = (final_p - y)), .prob = c(.99, .95, .8, .5)) +
+      scale_fill_brewer() +
+      facet_wrap( ~ participant_ID, nrow = 2, ncol = 5 ) + 
+      geom_point(aes (y = (flipped_ans - Value), x=Value ), data= subset(pie, participant_ID <= 10 )) +
+  coord_cartesian(ylim = c(-10, 10)) +
+  ggtitle("Pooled Power, Individual Weight Model for Particpants 1-10") +
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+
+```
+
+##Individual Power, Individual Weights Model
+```{r}
+
+fit5_pie <- stan(file = 'models/indv_wts_and_power_model.stan', data = pie_data, iter = 1000, chains = 1, verbose=TRUE,control = list(adapt_delta = 0.9))
+
+fit_data_pie_p <- spread_samples(fit5_pie, b[participant_ID], prob_segment[participant_ID][segment])
+
+unique_correct_ans <- unique(pie$Value)
+
+fit_data_pie_p_f <- merge(fit_data_pie_p, unique_correct_ans, all=TRUE)
+# y stands for the correct answer
+
+segments <- c(1,2,4);
+#update this with segments used in the model
+
+final_data <- fit_data_pie_p_f%>%
+  mutate(
+    correct_ans = y/100, 
+    riminus_value = floor((correct_ans)*segments[segment])*(1/segments[segment]),
+    ri_value = riminus_value + 1/segments[segment],
+    p = ((correct_ans - riminus_value)^b)/((correct_ans - riminus_value)^b+(ri_value - correct_ans)^b)*(1/segments[segment]) + (riminus_value),
+    weighted_p = p*prob_segment*100
+    ) %>%
+      group_by(.chain, .iteration, participant_ID, y, b) %>%
+        summarise(final_p = sum(weighted_p)) 
+
+## Changed column name!
+colnames(pie)[1] <- "participant_ID"
+
+final_data %>%
+  filter(participant_ID <= 10) %>%
+    ggplot(aes(x = y)) +
+      stat_lineribbon(aes(y = (y-final_p)), .prob = c(.99, .95, .8, .5)) +
+      scale_fill_brewer() +
+      facet_wrap( ~ participant_ID, nrow = 2, ncol = 5 ) + 
+      geom_point(aes (y = (Value - flipped_ans), x=Value ), data= subset(pie, participant_ID <= 10 )) +
+  coord_cartesian(ylim = c(-10, 10)) +
+  ggtitle("Individual Power, Individual Weight Model for Particpants 1-10") +
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+```
+
