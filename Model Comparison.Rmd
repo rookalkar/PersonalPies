@@ -311,9 +311,13 @@ log_lik_indv_power_indv_weight_lpo <- log_lik_indv_power_indv_weight_lpo[, -1]
 
 loo_model_weights(list(log_lik_single_cycle, log_lik_single_cycle_2_lpo, log_lik_single_cycle_4_lpo, log_lik_weighted_cycles_lpo,log_lik_indv_power_pooled_weight_lpo, log_lik_indv_weight_pooled_power_lpo, log_lik_indv_power_indv_weight_lpo),method="stacking")
 
+loo_model_weights(list(log_lik_single_cycle, log_lik_weighted_cycles_lpo,log_lik_indv_power_pooled_weight_lpo, log_lik_indv_weight_pooled_power_lpo, log_lik_indv_power_indv_weight_lpo),method="stacking")
+
 
 ```
-#1-segment Single Cycle Model: Fitting
+
+#Leave one Value Validation
+##1-segment Single Cycle Model: Fitting
 ```{r}
 log_lik_total_participant <- matrix(, nrow = 500, ncol = 1)
   
@@ -353,7 +357,7 @@ log_lik_single_cycle <- log_lik_single_cycle[, -1]
 
 ```
 
-#2-segment Single Cycle Model: Fitting
+##2-segment Single Cycle Model: Fitting
 ```{r}
 log_lik_total_participant <- matrix(, nrow = 500, ncol = 1)
   
@@ -393,7 +397,7 @@ log_lik_single_cycle_2 <- log_lik_single_cycle_2[, -1]
 
 ```
 
-#4-segment Single Cycle Model: Fitting
+##4-segment Single Cycle Model: Fitting
 ```{r}
 log_lik_total_participant <- matrix(, nrow = 500, ncol = 1)
   
@@ -433,7 +437,7 @@ log_lik_single_cycle_4 <- log_lik_single_cycle_4[, -1]
 
 ```
 
-#Weighted Cycles Model: Fitting
+##Weighted Cycles Model: Fitting
 ```{r}
 log_lik_total_participant <- matrix(, nrow = 500, ncol = 1)
   
@@ -473,7 +477,7 @@ log_lik_weighted_cycles <- log_lik_weighted_cycles[, -1]
 
 ```
 
-#Individual Power Pooled Weight Model: Fitting
+##Individual Power Pooled Weight Model: Fitting
 ```{r}
 log_lik_total_participant <- matrix(, nrow = 500, ncol = 1)
   
@@ -514,7 +518,7 @@ log_lik_indv_power_pooled_weight <- log_lik_indv_power_pooled_weight[, -1]
 
 ```
 
-#Individual Weight Pooled Power Model: Fitting
+##Individual Weight Pooled Power Model: Fitting
 ```{r}
 log_lik_total_participant <- matrix(, nrow = 500, ncol = 1)
   
@@ -555,7 +559,7 @@ log_lik_indv_weight_pooled_power <- log_lik_indv_weight_pooled_power[, -1]
 
 ```
 
-#Individual Weight Individual Power Model: Fitting
+##Individual Weight Individual Power Model: Fitting
 ```{r}
 log_lik_total_participant <- matrix(, nrow = 500, ncol = 1)
   
@@ -597,7 +601,7 @@ log_lik_indv_power_indv_weight <- log_lik_indv_power_indv_weight[, -1]
 ```
 
 
-#Model Weights
+##Model Weights
 ```{r}
 #kfold_weighted_cycles <- kfold(log_lik_weighted_cycles)
 #kfold_indv_power_pooled_weight <- kfold(log_lik_indv_power_pooled_weight)

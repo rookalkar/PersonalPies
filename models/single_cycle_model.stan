@@ -1,5 +1,5 @@
 data {
-  real<lower=1> segments; //number of markings (1 implies no other marks, 2 implies 3 points - 0, half, full ) r[n] n = segments
+  real<lower=1> segments; //number of markings (1 implies no marks, 2 implies 3 marks at - 0, 50%, 100% ) r[n] n = segments
   int<lower=1> n; //number of obervations
   //int<lower=1> total; //100% oflf the proportion, also = Rn
   vector[n] correct_ans; 

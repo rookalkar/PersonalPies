@@ -10,13 +10,32 @@ library(tidybayes)
 library(rstan)
 library(devtools)
 library(StanHeaders)
+library(readxl)
 
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 ```
 
-#PIE CHART
-## Flipping Results
+#SIMPLE VIS
+## Import Data
+This is data that is imported from the Skau et. al study 
+
+Link to study: https://eagereyes.org/blog/2016/a-reanalysis-of-a-study-about-square-pie-charts-from-2009 
+
+https://kosara.net/papers/2010/Kosara_BELIV_2010.pdf
+
+Link to data: https://github.com/eagereyes/pie-summaries/tree/master/data
+
+
+```{r}
+simplevis <- read_excel("~/Desktop/Research Work/PaperFinal/simplevis.xls")
+bar <- subset(simplevis, Type == 'bars')
+pie <- subset(simplevis, Type == 'piechart')
+donut <- subset(simplevis, Type == 'donut')
+```
+
+##PIE CHART
+### Flipping Results
 ```{r}
 ggplot(pie, aes(x = `distance from correct answer`, y = `distance from opposite answer`)) + 
   geom_point() + 
@@ -27,27 +46,21 @@ ggplot(pie, aes(x = `distance from correct answer`, y = `distance from opposite 
     theme_minimal()
 ```
 
-```{r}
-simplevis <- read_excel("~/Desktop/Research Work/simplevis.xls")
-bar <- subset(simplevis, Type == 'bars')
-pie <- subset(simplevis, Type == 'piechart')
-donut <- subset(simplevis, Type == 'donut')
 
 
-```
-
-##Single Cycle Model
-###1-Cycles
+###Single Cycle Model
+####1-Cycle
 ```{r}
 pie_data = list(n = length(pie$ID), correct_ans = pie$Value/100, response = pie$flipped_ans/100, segments=1)
 
 fit11_pie <- stan(file = 'models/single_cycle_model.stan', data = pie_data, iter = 1000, chains = 1, verbose=TRUE)
 
-model <- stan_model(file = 'models/single_cycle_model.stan') 
+#model <- stan_model(file = 'models/single_cycle_model.stan') 
 
+fit11_pie_data <- spread_draws(fit11_pie, b)
 
-fit11_pie_data <- spread_samples(fit11_pie, b)
 unique_correct_ans <- unique(pie$Value)
+
 fit11_pie_data <- merge(fit11_pie_data, unique_correct_ans, all=TRUE)
 
 segments <- c(1);
@@ -63,7 +76,7 @@ fit11_pie_data <- fit11_pie_data%>%
 
 fit11_pie_data %>%
   ggplot(aes(x = y)) +
-  stat_lineribbon(aes(y = (p-y)), .prob = c(.99, .95, .8, .5)) +
+  stat_lineribbon(aes(y = (p-y)), .width = c(.99, .95, .8, .5)) +
   geom_point(aes(y = (flipped_ans - Value), x = Value ), data = pie) +
   scale_fill_brewer() +
   ggtitle("1-cycle Cyclical Power Mode")+
@@ -71,7 +84,7 @@ fit11_pie_data %>%
   theme_minimal()
 ```
 
-###2-Cycles
+####2-Cycles
 ```{r}
 pie_data = list(n = length(pie$ID), correct_ans = pie$Value/100, response = pie$flipped_ans/100, segments=2)
 fit12_pie <- stan(file = 'models/single_cycle_model.stan', data = pie_data, iter = 1000, chains = 1, verbose=TRUE)
@@ -103,7 +116,7 @@ fit12_pie_data %>%
 
 
 
-###4-Cycles
+####4-Cycles
 ```{r}
 pie_data = list(n = length(pie$ID), correct_ans = pie$Value/100, response = pie$flipped_ans/100, segments=4)
 fit14_pie <- stan(file = 'models/single_cycle_model.stan', data = pie_data, iter = 1000, chains = 1, verbose=TRUE)
@@ -133,7 +146,7 @@ fit14_pie_data %>%
   theme_minimal()
 ```
 
-##Weighted Cycles Model
+###Weighted Cycles Model
 ```{r}
 
 pie_data = list(n = length(pie$ID), number_segments = 3, correct_ans = pie$Value/100, response = pie$flipped_ans/100, segments = c(1,2,4))
@@ -198,7 +211,7 @@ head(pie2, 25)
 
 
 
-##Individual Power, Pooled Weights Model
+###Individual Power, Pooled Weights Model
 ```{r}
 pie_data = list(n = length(pie$ID), correct_ans = pie$Value/100, response = pie$flipped_ans/100, segments = c(1,2,4), number_segments = 3, participant = pie$ID, k = max(pie$ID))
 
@@ -243,7 +256,7 @@ theme_set(theme_minimal())
 
 ```
 
-##Pooled Power, Individual Weights Model
+###Pooled Power, Individual Weights Model
 ```{r}
 fit4_pie <- stan(file = 'models/indv_wts_pooled_power_model.stan', data = pie_data, iter = 1000, chains = 1, verbose=TRUE)
 
@@ -285,7 +298,7 @@ final_data %>%
 
 ```
 
-##Individual Power, Individual Weights Model
+###Individual Power, Individual Weights Model
 ```{r}
 
 fit5_pie <- stan(file = 'models/indv_wts_and_power_model.stan', data = pie_data, iter = 1000, chains = 1, verbose=TRUE,control = list(adapt_delta = 0.9))
@@ -327,8 +340,8 @@ final_data %>%
   theme_minimal()
 ```
 
-#BAR CHART
-## Flipping Results
+##BAR CHART
+### Flipping Results
 ```{r}
 ggplot(bar, aes(x = `distance from correct answer`, y = `distance from opposite answer`)) + 
   geom_point() + 
@@ -339,7 +352,7 @@ ggplot(bar, aes(x = `distance from correct answer`, y = `distance from opposite 
     theme_minimal()
 ```
 
-###1-Cycles
+####1-Cycles
 ```{r}
 bar_data = list(n = length(bar$ID), correct_ans = bar$Value/100, response = bar$flipped_ans/100, segments=1)
 
@@ -373,7 +386,7 @@ fit11_bar_data %>%
   theme_minimal()
 ```
 
-###2-Cycles
+####2-Cycles
 ```{r}
 bar_data = list(n = length(bar$ID), correct_ans = bar$Value/100, response = bar$flipped_ans/100, segments=2)
 fit12_bar <- stan(file = 'models/single_cycle_model.stan', data = bar_data, iter = 1000, chains = 1, verbose=TRUE)
@@ -405,7 +418,7 @@ fit12_bar_data %>%
 
 
 
-###4-Cycles
+####4-Cycles
 ```{r}
 bar_data = list(n = length(bar$ID), correct_ans = bar$Value/100, response = bar$flipped_ans/100, segments=4)
 fit14_bar <- stan(file = 'models/single_cycle_model.stan', data = bar_data, iter = 1000, chains = 1, verbose=TRUE)
@@ -435,7 +448,7 @@ fit14_bar_data %>%
   theme_minimal()
 ```
 
-##Weighted Cycles Model
+###Weighted Cycles Model
 ```{r}
 
 bar_data = list(n = length(bar$ID), number_segments = 3, correct_ans = bar$Value/100, response = bar$flipped_ans/100, segments = c(1,2,4))
@@ -490,7 +503,7 @@ fit_data_m
     
 ```
 
-##Individual Power, Pooled Weights Model
+###Individual Power, Pooled Weights Model
 ```{r}
 bar_data = list(n = length(bar$ID), correct_ans = bar$Value/100, response = bar$flipped_ans/100, segments = c(1,2,4), number_segments = 3, participant = bar$ID, k = max(bar$ID))
 
@@ -535,7 +548,7 @@ theme_set(theme_minimal())
 
 ```
 
-##Pooled Power, Individual Weights Model
+###Pooled Power, Individual Weights Model
 ```{r}
 fit4_bar <- stan(file = 'models/indv_wts_pooled_power_model.stan', data = bar_data, iter = 1000, chains = 1, verbose=TRUE)
 
@@ -577,7 +590,7 @@ final_data %>%
 
 ```
 
-##Individual Power, Individual Weights Model
+###Individual Power, Individual Weights Model
 ```{r}
 
 fit5_bar <- stan(file = 'models/indv_wts_and_power_model.stan', data = bar_data, iter = 1000, chains = 1, verbose=TRUE,control = list(adapt_delta = 0.9))
@@ -615,6 +628,80 @@ final_data %>%
       geom_point(aes (y = (Value - flipped_ans), x=Value ), data= subset(bar, participant_ID <= 9 )) +
   coord_cartesian(ylim = c(-10, 10)) +
   ggtitle("Individual Weight, Individual Power Model for Particpants 1-9") +
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+```
+
+#ARCS AREA ANGLES STUDY
+##Import Data 
+This is data that is imported from the Kosara et. al study 
+
+Link to study: https://kosara.net/papers/2016/Skau-EuroVis-2016.pdf
+
+Link to data: https://github.com/eagereyes/pie-summaries/blob/master/data/arcs-angles-areas-merged.csv
+
+
+```{r}
+
+aaa_study <- read_excel("~/Desktop/Research Work/PaperFinal/Arcs Angles Areas Results Data.xlsx" , sheet = "flipped_data")
+
+aaa_study_pie <- subset(aaa_study, chart_type == 'Pie Chart')
+
+
+
+```
+
+##PIE CHART
+
+### Renaming column names
+```{r}
+setnames(aaa_study, old=c("subjectID","correct_ans"), new=c("ID", "Value"))
+```
+
+
+### Flipping Results
+```{r}
+ggplot(aaa_study_pie, aes(x = `distance from correct answer`, y = `distance from opposite answer`)) + 
+  geom_point() + 
+  geom_vline(xintercept = 8) + 
+  geom_abline(intercept = 0, slope = 1) + 
+  geom_point(aes(color = "red"), data = subset(aaa_study_pie, (`distance from correct answer` > 8) & (`distance from opposite answer` < `distance from correct answer`))) +
+  ggtitle('Flipping for Pie Chart')+
+    theme_minimal()
+```
+
+###Single Cycle Model
+####1-Cycle
+```{r}
+aaa_pie_data = list(n = length(aaa_study_pie$ID), correct_ans = aaa_study_pie$correct_ans/100, response = aaa_study_pie$flipped_ans/100, segments=1)
+
+fit11_aaa_pie <- stan(file = 'models/single_cycle_model.stan', data = aaa_pie_data, iter = 1000, chains = 1, verbose=TRUE)
+
+#model <- stan_model(file = 'models/single_cycle_model.stan') 
+
+fit11_aaa_pie_data <- spread_draws(fit11_aaa_pie, b)
+
+unique_correct_ans_aaa <- unique(aaa_study_pie$correct_ans)
+
+fit11_aaa_pie_data <- merge(fit11_aaa_pie_data, unique_correct_ans_aaa, all=TRUE)
+
+segments <- c(1);
+#update this with segments used in the model
+
+fit11_pie_data <- fit11_pie_data%>%
+  mutate(
+    correct_ans = y/100, 
+    riminus_value = floor((correct_ans)*segments[1])*(1/segments[1]),
+    ri_value = riminus_value + 1/segments[1],
+    p = (((correct_ans - riminus_value)^b)/((correct_ans - riminus_value)^b+(ri_value - correct_ans)^b)*(1/segments[1]) + (riminus_value))*100,
+    )
+
+fit11_pie_data %>%
+  ggplot(aes(x = y)) +
+  stat_lineribbon(aes(y = (p-y)), .width = c(.99, .95, .8, .5)) +
+  geom_point(aes(y = (flipped_ans - Value), x = Value ), data = aaa_study_pie) +
+  scale_fill_brewer() +
+  ggtitle("1-cycle Cyclical Power Mode")+
   labs(x = "True Proportion", y="Bias") +
   theme_minimal()
 ```
