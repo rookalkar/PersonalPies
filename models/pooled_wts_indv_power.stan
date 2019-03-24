@@ -69,7 +69,9 @@ model {
 }
 
 generated quantities {
+  vector[n] response_pred;
   vector[n] log_lik;
+  int<lower=0,upper=number_segments> segment_selected[n];
   
   for (i in 1:n) {
     vector[number_segments] test;
@@ -77,5 +79,11 @@ generated quantities {
       test[j] = beta_lpdf(response[i] | p[j][i]*phi, (1-p[j][i])*phi) + log(prob_segment[j]);
     }
     log_lik[i] = log_sum_exp(test);
+  }
+  
+  for (i in 1:n) {
+    
+    segment_selected[i] = categorical_rng(prob_segment);
+    response_pred[i] = beta_rng(p[segment_selected[i]][i]*phi, (1 - p[segment_selected[i]][i])*phi);
   }
 }

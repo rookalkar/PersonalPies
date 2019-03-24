@@ -1,0 +1,583 @@
+#Setup
+```{r setup}
+
+library(dplyr)
+library(ggplot2)
+library(tidybayes)
+library(rstan)
+library(devtools)
+library(StanHeaders)
+library(readxl)
+library(data.table)
+library(sma)
+library(tidyr)
+
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+```
+
+
+#ARCS AREA ANGLES STUDY
+
+##Import Data 
+This is data that is imported from the Kosara et. al study 
+
+Link to study: https://kosara.net/papers/2016/Skau-EuroVis-2016.pdf
+
+Link to data: https://github.com/eagereyes/pie-summaries/blob/master/data/arcs-angles-areas-merged.csv
+
+Hereafter, this study is referred to as the AAA study.
+
+
+```{r import AAA data}
+
+aaa_study <- read_excel("~/Desktop/Research Work/PaperFinal/Arcs Angles Areas Results Data.xlsx" , sheet = "flipped_data")
+
+#this dataset contains data corresponding to all six chart types explored in the paper. However, we are only interested in the Baseline Pie chart.
+
+aaa_study_pie <- subset(aaa_study, chart_type == 'Pie Chart')
+
+## Changed column name of AAA data from subject ID to participant ID to match with value name in the models
+colnames(aaa_study_pie)[1] <- "participant_ID"
+```
+
+##PIE CHART
+
+### Flipping Results
+
+The AAA study flipped answers for each participant if more than half of the answers for this participant were closer to the opposite segment. However, flipping on participant level might not be accurate since some chart types, such as the angle charts were more ambiguous than others. 
+
+To counter this, we flip answers on an observation level. For each observation we flip the answer if the answer is closer to the opposite segment and distance from the correct answer is greater than 8. The value 8 is chosen since most of the data points are within this range (see graph for details).
+
+```{r flip AAA data}
+ggplot(aaa_study_pie, aes(x = `distance from correct answer`, y = `distance from opposite answer`)) + 
+  geom_point() + 
+  geom_vline(xintercept = 8) + 
+  geom_abline(intercept = 0, slope = 1) + 
+  geom_point(aes(color = "red"), data = subset(aaa_study_pie, (`distance from correct answer` > 8) & (`distance from opposite answer` < `distance from correct answer`))) +
+  ggtitle('Flipping for Pie Chart')+
+    theme_minimal()
+```
+
+###Single Cycle Model
+
+Let us try fitting our basic single cycle models to our cleaned data. This model is defined in Holland's et al and explains the pattern of biases seen in estimation tasks.
+
+####1-Cycle
+The 1-Cycle model describes a pie chart which has one segment i.e it has reference marks on 0%.
+
+```{r AAA: fit 1-cycle single cycle model}
+aaa_pie_data = list(n = length(aaa_study_pie$participant_ID), correct_ans = aaa_study_pie$correct_ans/100, response = aaa_study_pie$flipped_ans/100, segments=1)
+
+fit11_aaa_pie <- stan(file = 'models/single_cycle_model.stan', data = aaa_pie_data, iter = 1000, chains = 1, verbose=TRUE)
+
+fit11_aaa_pie_data <- spread_draws(fit11_aaa_pie, b)
+
+unique_correct_ans_aaa <- unique(aaa_study_pie$correct_ans)
+
+fit11_aaa_pie_data <- merge(fit11_aaa_pie_data, unique_correct_ans_aaa, all=TRUE)
+
+segments <- c(1);
+#update this with segments used in the model
+
+fit11_aaa_pie_data <- fit11_aaa_pie_data%>%
+  mutate(
+    correct_ans = y/100, 
+    riminus_value = floor((correct_ans)*segments[1])*(1/segments[1]),
+    ri_value = riminus_value + 1/segments[1],
+    p = (((correct_ans - riminus_value)^b)/((correct_ans - riminus_value)^b+(ri_value - correct_ans)^b)*(1/segments[1]) + (riminus_value))*100,
+    )
+
+fit11_aaa_pie_data %>%
+  ggplot(aes(x = y)) +
+  stat_lineribbon(aes(y = (p-y)), .width = c(.99, .95, .8, .5)) +
+  geom_point(aes(y = (flipped_ans - correct_ans), x = correct_ans ), data = aaa_study_pie) +
+  scale_fill_brewer() +
+  ggtitle("1-cycle Cyclical Power Model")+
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+```
+
+####2-Cycles
+
+The 2-Cycle model describes a pie chart which has two segments i.e it has reference marks on 0%, 50%, 100%.
+
+```{r  AAA: fit 2-cycle single cycle model}
+aaa_pie_data = list(n = length(aaa_study_pie$participant_ID), correct_ans = aaa_study_pie$correct_ans/100, response = aaa_study_pie$flipped_ans/100, segments=2)
+
+fit12_aaa_pie <- stan(file = 'models/single_cycle_model.stan', data = aaa_pie_data, iter = 1000, chains = 1, verbose=TRUE)
+
+#model <- stan_model(file = 'models/single_cycle_model.stan') 
+
+fit12_aaa_pie_data <- spread_draws(fit12_aaa_pie, b)
+
+unique_correct_ans_aaa <- unique(aaa_study_pie$correct_ans)
+
+fit12_aaa_pie_data <- merge(fit12_aaa_pie_data, unique_correct_ans_aaa, all=TRUE)
+
+segments <- c(2);
+#update this with segments used in the model
+
+fit12_aaa_pie_data <- fit12_aaa_pie_data%>%
+  mutate(
+    correct_ans = y/100, 
+    riminus_value = floor((correct_ans)*segments[1])*(1/segments[1]),
+    ri_value = riminus_value + 1/segments[1],
+    p = (((correct_ans - riminus_value)^b)/((correct_ans - riminus_value)^b+(ri_value - correct_ans)^b)*(1/segments[1]) + (riminus_value))*100,
+    )
+
+fit12_aaa_pie_data %>%
+  ggplot(aes(x = y)) +
+  stat_lineribbon(aes(y = (p-y)), .width = c(.99, .95, .8, .5)) +
+  geom_point(aes(y = (flipped_ans - correct_ans), x = correct_ans ), data = aaa_study_pie) +
+  scale_fill_brewer() +
+  ggtitle("2-cycle Cyclical Power Mode")+
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+```
+
+
+####4-Cycles
+
+The 4-Cycle model describes a pie chart which has four segments i.e it has reference marks on 0%, 25%, 50%, 75%, 100%.
+
+```{r  AAA: fit 4-cycle single cycle model}
+aaa_pie_data = list(n = length(aaa_study_pie$participant_ID), correct_ans = aaa_study_pie$correct_ans/100, response = aaa_study_pie$flipped_ans/100, segments=4)
+
+fit14_aaa_pie <- stan(file = 'models/single_cycle_model.stan', data = aaa_pie_data, iter = 1000, chains = 1, verbose=TRUE)
+
+#model <- stan_model(file = 'models/single_cycle_model.stan') 
+
+fit14_aaa_pie_data <- spread_draws(fit14_aaa_pie, b)
+
+unique_correct_ans_aaa <- unique(aaa_study_pie$correct_ans)
+
+fit14_aaa_pie_data <- merge(fit14_aaa_pie_data, unique_correct_ans_aaa, all=TRUE)
+
+segments <- c(4);
+#update this with segments used in the model
+
+fit14_aaa_pie_data <- fit14_aaa_pie_data%>%
+  mutate(
+    correct_ans = y/100, 
+    riminus_value = floor((correct_ans)*segments[1])*(1/segments[1]),
+    ri_value = riminus_value + 1/segments[1],
+    p = (((correct_ans - riminus_value)^b)/((correct_ans - riminus_value)^b+(ri_value - correct_ans)^b)*(1/segments[1]) + (riminus_value))*100,
+    )
+
+fit14_aaa_pie_data %>%
+  ggplot(aes(x = y)) +
+  stat_lineribbon(aes(y = (p-y)), .width = c(.99, .95, .8, .5)) +
+  geom_point(aes(y = (flipped_ans - correct_ans), x = correct_ans ), data = aaa_study_pie) +
+  scale_fill_brewer() +
+  ggtitle("4-cycle Cyclical Power Mode")+
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+```
+
+###Pooled Weights and Pooled Power Model (Weighted Cycles Model)
+
+The Pooled Weights and Pooled Power Model, also referred to as the Weighted Cycles Model is a mixture model of the earlier single cycles model (1 Cycle, 2 Cycle and 4 Cycle).
+
+
+```{r  AAA: fit weighted cycles model}
+
+aaa_pie_data = list(n = length(aaa_study_pie$participant_ID), number_segments = 3, correct_ans = aaa_study_pie$correct_ans/100, response = aaa_study_pie$flipped_ans/100, segments = c(1,2,4))
+
+fit2_aaa_pie <- stan(file = 'models/weighted_cycles_model.stan', data = aaa_pie_data, iter = 1000, chains = 1, verbose=TRUE)
+
+saveRDS(fit2_aaa_pie, "fit_aaa_weighted_cycles.rds")
+
+#fit2_pie <- readRDS("fit_aaa_weighted_cycles.rds")
+
+#building the new DB
+b_and_p <- as.matrix(fit2_aaa_pie, pars = c("prob_segment", "b" ))
+fit_data_m_aaa <- as.data.frame(b_and_p)
+
+unique_correct_ans <- as.data.frame(unique(aaa_study_pie$correct_ans))
+
+fit_data_m_aaa <- cbind(fit_data_m_aaa, correct_ans = rep(unique_correct_ans$`unique(aaa_study_pie$correct_ans)`, each = nrow(fit_data_m_aaa)))
+
+    b = fit_data_m_aaa$b
+    prob_segment1 = fit_data_m_aaa$`prob_segment[1]`
+    prob_segment2 = fit_data_m_aaa$`prob_segment[2]`
+    prob_segment3 = fit_data_m_aaa$`prob_segment[3]`
+    segment1 = 1
+    segment2 = 2
+    segment3 = 4
+    correct_ans = fit_data_m_aaa$correct_ans/100
+
+    riminus_value1 = floor(correct_ans*segment1)*(1/segment1);
+    ri_value1 = riminus_value1 + 1/segment1;
+    p1 = ((correct_ans - riminus_value1)^b)/((correct_ans - riminus_value1)^b+(ri_value1 - correct_ans)^b)*(1/segment1) + (riminus_value1);
+
+    riminus_value2 = floor(correct_ans*segment2)*(1/segment2);
+    ri_value2 = riminus_value2 + 1/segment2;
+    p2 = ((correct_ans - riminus_value2)^b)/((correct_ans - riminus_value2)^b+(ri_value2 - correct_ans)^b)*(1/segment2) + (riminus_value2);
+
+    riminus_value3 = floor(correct_ans*segment3)*(1/segment3);
+    ri_value3 = riminus_value3 + 1/segment3;
+    p3 = ((correct_ans - riminus_value3)^b)/((correct_ans - riminus_value3)^b+(ri_value3 - correct_ans)^b)*(1/segment3) + (riminus_value3);
+    
+    fit_data_m_aaa$p = (prob_segment1*p1 + prob_segment2*p2 + prob_segment3*p3)*100;
+    
+  fit_data_m_aaa %>%
+  ggplot(aes(x = correct_ans)) +
+  stat_lineribbon(aes(y = (p-correct_ans)), .width = c(.99, .95, .8, .5)) +
+ # geom_point(aes(y = (flipped_ans - correct_ans), x = correct_ans ), data = flipped_pie_angle) +
+  stat_smooth(data=aaa_study_pie, aes(x =correct_ans, y =(flipped_ans-correct_ans) ) , color = "green", span = .3) +
+  stat_summary(fun.data = "mean_se", geom="pointrange", data = aaa_study_pie, aes(x =correct_ans, y =(flipped_ans-correct_ans))) +
+  scale_fill_brewer() +
+  ggtitle("Pie Mixture Model (1-cycle,2-cycle,4-cycle)") +
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+    
+    mean(fit_data_m_aaa$`prob_segment[1]`)
+    mean(fit_data_m_aaa$`prob_segment[2]`)
+    mean(fit_data_m_aaa$`prob_segment[3]`)
+    
+```
+
+####Pooled Weights and Pooled Power Model for 1-99 values
+
+Let us see how this model works for a larger number of input values.
+
+```{r  AAA: fit weighted cycles model 1-99}
+
+fit_data_aaa <- spread_draws(fit2_aaa_pie, b, prob_segment[segment])
+
+all_numbers <- (seq(1, 99, 1))
+
+fit_data_aaa_merge <- merge(fit_data_aaa, all_numbers, all=TRUE)
+# y stands for the correct answer
+
+temp <- merge(fit_data_aaa, all_numbers, all=TRUE)
+
+segments <- c(1,2,4);
+#update this with segments used in the model
+
+final_data_aaa_w <- fit_data_aaa_merge%>%
+  mutate(
+    correct_ans = y/100, 
+    riminus_value = floor((correct_ans)*segments[segment])*(1/segments[segment]),
+    ri_value = riminus_value + 1/segments[segment],
+    p = ((correct_ans - riminus_value)^b)/((correct_ans - riminus_value)^b+(ri_value - correct_ans)^b)*(1/segments[segment]) + (riminus_value),
+    weighted_p = p*prob_segment*100
+    ) %>%
+      group_by(.chain, .iteration, b, y) %>%
+        summarise(final_p = sum(weighted_p)) 
+
+final_data_aaa_w %>%
+  ggplot(aes(x = y)) +
+  stat_lineribbon(aes(y = (final_p-y)), .width = c(.99, .95, .8, .5)) +
+ # geom_point(aes(y = (flipped_ans - correct_ans), x = correct_ans ), data = flipped_pie_angle) +
+  stat_smooth(data=aaa_study_pie, aes(x =correct_ans, y =(flipped_ans-correct_ans) ) , color = "green", span = .3) +
+  stat_summary(fun.data = "mean_se", geom="pointrange", data = aaa_study_pie, aes(x =correct_ans, y =(flipped_ans-correct_ans))) +
+  scale_fill_brewer() +
+  ggtitle("Pie Weighted Cycles Model (1-cycle,2-cycle,4-cycle)") +
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+
+theme_set(theme_minimal())
+    
+```
+
+###Pooled Weights, Individual Power Model
+
+#### Reconstructing Model
+```{r AAA: fit PWIP model}
+aaa_pie_data = list(n = length(aaa_study_pie$participant_ID), correct_ans = aaa_study_pie$correct_ans/100, response = aaa_study_pie$flipped_ans/100, segments = c(1,2,4), number_segments = 3, participant = aaa_study_pie$participant_ID, k = max(aaa_study_pie$participant_ID))
+
+fit3_aaa_pie <- stan(file ='models/pooled_wts_indv_power.stan' , data = aaa_pie_data, iter = 1000, chains = 1, verbose=TRUE)
+
+saveRDS(fit3_aaa_pie, "fit_aaa_pooled_wts_indv_power.rds")
+
+#fit3_pie <- readRDS("fit_aaa_pooled_wts_indv_power.rds")
+
+
+fit_data_aaa_pie_p <- spread_draws(fit3_aaa_pie, b[participant_ID], prob_segment[segment])
+
+unique_correct_ans <- unique(aaa_study_pie$correct_ans)
+
+fit_data_aaa_pie_p_f <- merge(fit_data_aaa_pie_p, unique_correct_ans, all=TRUE)
+# y stands for the correct answer
+
+segments <- c(1,2,4);
+#update this with segments used in the model
+
+final_data_aaa_3 <- fit_data_aaa_pie_p_f%>%
+  mutate(
+    correct_ans = y/100, 
+    riminus_value = floor((correct_ans)*segments[segment])*(1/segments[segment]),
+    ri_value = riminus_value + 1/segments[segment],
+    p = ((correct_ans - riminus_value)^b)/((correct_ans - riminus_value)^b+(ri_value - correct_ans)^b)*(1/segments[segment]) + (riminus_value),
+    weighted_p = p*prob_segment*100
+    ) %>%
+      group_by(.chain, .iteration, participant_ID, b, y) %>%
+        summarise(final_p = sum(weighted_p)) 
+
+
+
+
+final_data_aaa_3 %>%
+  filter(participant_ID <= 9) %>%
+    ggplot(aes(x = y)) +
+      stat_lineribbon(aes(y = (y-final_p)), .width = c(.99, .95, .8, .5)) +
+      scale_fill_brewer() +
+      facet_wrap( ~ participant_ID, nrow = 3) + 
+      geom_point(aes (y = (correct_ans - flipped_ans), x=correct_ans ), data= subset(aaa_study_pie, participant_ID <= 9 )) +
+  ggtitle("Pooled Weights Individual Power Model for Particpants 1-9") +
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+
+theme_set(theme_minimal())
+
+```
+
+#### Posterior Plot
+```{r AAA: Posterior plots PWIP model}
+
+aaa_pie_data = list(n = length(aaa_study_pie$participant_ID), correct_ans = aaa_study_pie$correct_ans/100, response = aaa_study_pie$flipped_ans/100, segments = c(1,2,4), number_segments = 3, participant = aaa_study_pie$participant_ID, k = max(aaa_study_pie$participant_ID))
+
+PWIP_fit <- stan(file ='models/pooled_wts_indv_power.stan' , data = aaa_pie_data, iter = 1000, chains = 1, verbose=TRUE)
+
+PWIP_predicted_data <- spread_draws(PWIP_fit, response_pred[i]) %>%
+  summarise_all(list)
+
+PWIP_combined_data <- unnest(bind_cols(aaa_study_pie, PWIP_predicted_data))
+
+
+PWIP_combined_data %>%
+    ggplot(aes(x = correct_ans/100)) +
+      stat_lineribbon(aes(y = (response_pred - correct_ans/100)), .width = c(.99, .95, .8, .5)) +
+      scale_fill_brewer() +
+      geom_point(aes (y = (flipped_ans/100 - correct_ans/100)), data = aaa_study_pie) +
+  ggtitle("Posterior for Pooled Weights Individual Power Model") +
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+
+```
+
+#### QQ Plot
+```{r AAA: PWIP model QQ plot}
+
+PWIP_combined_data%>%
+  group_by(i) %>%
+    summarise(
+      p_residual = mean(response_pred < flipped_ans/100),
+      z_residual = qnorm(p_residual)
+    ) %>%
+    ggplot(aes(sample = z_residual)) +
+    geom_qq() +
+    geom_abline()+ 
+    ggtitle("QQ plot for Pooled Weights Individual Power Model")
+
+```
+
+
+###Individual Weights, Pooled Power Model
+
+#### Reconstructing Model
+```{r AAA: fit IWPP model}
+fit4_aaa_pie <- stan(file = 'models/indv_wts_pooled_power_model.stan', data = aaa_pie_data, iter = 1000, chains = 1, verbose=TRUE ,control = list(adapt_delta = 0.9))
+
+saveRDS(fit4_aaa_pie, "fit_aaa_indv_wts_pooled_power.rds")
+
+summary(fit4_aaa_pie)
+
+#fit4_aaa_pie <- readRDS("fit_aaa_indv_wts_pooled_power.rds")
+
+fit_data_aaa_pie_p <- spread_draws(fit4_aaa_pie, b, prob_segment[participant_ID][segment])
+
+unique_correct_ans <- unique(aaa_study_pie$correct_ans)
+
+fit_data_aaa_pie_p_f <- merge(fit_data_aaa_pie_p, unique_correct_ans, all=TRUE)
+# y stands for the correct answer
+
+segments <- c(1,2,4);
+#update this with segments used in the model
+
+final_aaa_data4 <- fit_data_aaa_pie_p_f%>%
+  mutate(
+    correct_ans = y/100, 
+    riminus_value = floor((correct_ans)*segments[segment])*(1/segments[segment]),
+    ri_value = riminus_value + 1/segments[segment],
+    p = ((correct_ans - riminus_value)^b)/((correct_ans - riminus_value)^b+(ri_value - correct_ans)^b)*(1/segments[segment]) + (riminus_value),
+    weighted_p = p*prob_segment*100
+    ) %>%
+      group_by(.chain, .iteration, b, participant_ID, y) %>%
+        summarise(final_p = sum(weighted_p)) 
+
+## Changed column name!
+#colnames(pie)[1] <- "participant_ID"
+
+final_aaa_data4 %>%
+  filter(participant_ID <= 9) %>%
+    ggplot(aes(x = y)) +
+      stat_lineribbon(aes(y = (final_p - y)), .width = c(.99, .95, .8, .5)) +
+      scale_fill_brewer() +
+      facet_wrap( ~ participant_ID, nrow = 3 ) + 
+      geom_point(aes (y = (flipped_ans - correct_ans), x=correct_ans ), data= subset(aaa_study_pie, participant_ID <= 9 )) +
+  coord_cartesian(ylim = c(-10, 10)) +
+  ggtitle("Individual Weights Pooled Power Model for Particpants 1-9") +
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+
+```
+
+
+#### Posterior Plot
+```{r AAA: posterior plots IWPP model}
+
+aaa_pie_data = list(n = length(aaa_study_pie$participant_ID), correct_ans = aaa_study_pie$correct_ans/100, response = aaa_study_pie$flipped_ans/100, segments = c(1,2,4), number_segments = 3, participant = aaa_study_pie$participant_ID, k = max(aaa_study_pie$participant_ID))
+
+IWPP_fit <- stan(file ='models/indv_wts_pooled_power_model.stan' , data = aaa_pie_data, iter = 1000, chains = 1, verbose=TRUE, control = list(adapt_delta = 0.95, max_treedepth = 15))
+
+IWPP_predicted_data <- spread_draws(IWPP_fit, response_pred[i]) %>%
+  summarise_all(list)
+
+IWPP_combined_data <- unnest(bind_cols(aaa_study_pie, IWPP_predicted_data))
+
+
+IWPP_combined_data %>%
+    ggplot(aes(x = correct_ans/100)) +
+      stat_lineribbon(aes(y = (response_pred - correct_ans/100)), .width = c(.99, .95, .8, .5)) +
+      scale_fill_brewer() +
+      geom_point(aes (y = (flipped_ans/100 - correct_ans/100)), data = aaa_study_pie) +
+  ggtitle("Posterior for Individual Weights Pooled Power Model") +
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+
+```
+
+```{r}
+sampler_params <- get_sampler_params(IWPP_fit, inc_warmup = TRUE)
+summary(do.call(rbind, sampler_params), digits = 2)
+
+pairs(IWPP_fit, pars = c("b", "phi", "lp__"), las = 1)
+
+pairs(IWPP_fit, pars = c("sigma", "phi", "lp__"), las = 1)
+```
+
+```{r}
+aaa_study_pie_subset = subset(aaa_study_pie, ID <= 10)
+
+aaa_pie_data_subset = list(n = length(aaa_study_pie_subset$participant_ID), correct_ans = aaa_study_pie_subset$correct_ans/100, response = aaa_study_pie_subset$flipped_ans/100, segments = c(1,2,4), number_segments = 3, participant = aaa_study_pie_subset$participant_ID, k = max(aaa_study_pie_subset$participant_ID))
+
+IWPP_fit_subset <- stan(file ='models/indv_wts_pooled_power_model.stan' , data = aaa_pie_data_subset, iter = 1000, chains = 1, verbose=TRUE, control = list(adapt_delta = 0.95, max_treedepth = 15))
+
+sampler_params <- get_sampler_params(IWPP_fit, inc_warmup = TRUE)
+summary(do.call(rbind, sampler_params), digits = 2)
+
+pairs(IWPP_fit, pars = c("b", "phi", "lp__"), las = 1)
+
+pairs(IWPP_fit, pars = c("sigma", "phi", "lp__"), las = 1)
+```
+
+
+#### QQ Plot
+```{r AAA: QQ plot IWPP model }
+
+IWPP_combined_data%>%
+  group_by(i) %>%
+    summarise(
+      p_residual = mean(response_pred < flipped_ans/100),
+      z_residual = qnorm(p_residual)
+    ) %>%
+    ggplot(aes(sample = z_residual)) +
+    geom_qq() +
+    geom_abline()+ 
+    ggtitle("QQ plot for Individual Weights Pooled Power Model")
+
+```
+
+
+###Individual Weights, Individual Power Model
+
+#### Reconstructing Model
+```{r AAA: fit IWIP model}
+
+fit5_aaa_pie <- stan(file = 'models/indv_wts_and_power_model.stan', data = aaa_pie_data, iter = 1000, chains = 1, verbose=TRUE,control = list(adapt_delta = 0.99))
+
+saveRDS(fit5_aaa_pie, "fit_aaa_indv_wts_indv_power.rds")
+
+saveRDS(fit5_aaa_pie, "fit_aaa_indv_wts_indv_power_expo.rds")
+
+#fit5_aaa_pie <- readRDS("fit_aaa_indv_wts_indv_power.rds")
+
+fit_data_aaa_pie_p <- spread_samples(fit5_aaa_pie, b[participant_ID], prob_segment[participant_ID][segment])
+
+unique_correct_ans <- unique(aaa_study_pie$correct_ans)
+
+fit_data_aaa_pie_p_f <- merge(fit_data_aaa_pie_p, unique_correct_ans, all=TRUE)
+# y stands for the correct answer
+
+segments <- c(1,2,4);
+#update this with segments used in the model
+
+final_aaa_data5 <- fit_data_aaa_pie_p_f%>%
+  mutate(
+    correct_ans = y/100, 
+    riminus_value = floor((correct_ans)*segments[segment])*(1/segments[segment]),
+    ri_value = riminus_value + 1/segments[segment],
+    p = ((correct_ans - riminus_value)^b)/((correct_ans - riminus_value)^b+(ri_value - correct_ans)^b)*(1/segments[segment]) + (riminus_value),
+    weighted_p = p*prob_segment*100
+    ) %>%
+      group_by(.chain, .iteration, participant_ID, y, b) %>%
+        summarise(final_p = sum(weighted_p)) 
+
+## Changed column name!
+#colnames(pie)[1] <- "participant_ID"
+
+final_aaa_data5 %>%
+  filter(participant_ID <= 9) %>%
+    ggplot(aes(x = y)) +
+      stat_lineribbon(aes(y = (y-final_p)), .width = c(.99, .95, .8, .5)) +
+      scale_fill_brewer() +
+      facet_wrap( ~ participant_ID, nrow = 3) + 
+      geom_point(aes (y = (correct_ans - flipped_ans), x=correct_ans ), data= subset(aaa_study_pie, participant_ID <= 9 )) +
+  coord_cartesian(ylim = c(-10, 10)) +
+  ggtitle("Individual Weight, Individual Power Model for Particpants 1-9") +
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+```
+
+#### Posterior Plot
+```{r AAA: posterior plots IWIP model}
+
+aaa_pie_data = list(n = length(aaa_study_pie$participant_ID), correct_ans = aaa_study_pie$correct_ans/100, response = aaa_study_pie$flipped_ans/100, segments = c(1,2,4), number_segments = 3, participant = aaa_study_pie$participant_ID, k = max(aaa_study_pie$participant_ID))
+
+IWIP_fit <- stan(file ='models/indv_wts_and_power_model.stan' , data = aaa_pie_data, iter = 1000, chains = 1, verbose=TRUE)
+
+IWIP_predicted_data <- spread_draws(IWIP_fit, response_pred[i]) %>%
+  summarise_all(list)
+
+IWIP_combined_data <- unnest(bind_cols(aaa_study_pie, IWIP_predicted_data))
+
+
+IWIP_combined_data %>%
+    ggplot(aes(x = correct_ans/100)) +
+      stat_lineribbon(aes(y = (response_pred - correct_ans/100)), .width = c(.99, .95, .8, .5)) +
+      scale_fill_brewer() +
+      geom_point(aes (y = (flipped_ans/100 - correct_ans/100)), data = aaa_study_pie) +
+  ggtitle("Posterior for Individual Weights Individual Power Model") +
+  labs(x = "True Proportion", y="Bias") +
+  theme_minimal()
+
+```
+
+#### QQ Plot
+```{r AAA: QQ plot IWIP model }
+
+IWIP_combined_data%>%
+  group_by(i) %>%
+    summarise(
+      p_residual = mean(response_pred < flipped_ans/100),
+      z_residual = qnorm(p_residual)
+    ) %>%
+    ggplot(aes(sample = z_residual)) +
+    geom_qq() +
+    geom_abline()+ 
+    ggtitle("QQ plot for Indvidual Weights, Individual Power Model")
+
+```

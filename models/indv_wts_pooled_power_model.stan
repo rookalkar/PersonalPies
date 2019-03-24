@@ -77,3 +77,13 @@ model {
     target += log_sum_exp(test);
   }
 }
+
+generated quantities {
+  vector[n] response_pred;
+  int<lower=0,upper=number_segments> segment_selected[n];
+  
+  for (i in 1:n) {
+    segment_selected[i] = categorical_rng(prob_segment[participant[i]]);
+    response_pred[i] = beta_rng(p[segment_selected[i]][i]*phi, (1 - p[segment_selected[i]][i])*phi);
+  }
+}
