@@ -1,5 +1,4 @@
 data {
-  //Training Data
   int<lower=1> n; //number of obervations
   vector[n] correct_ans; 
   int participant[n]; //participant ID
@@ -15,9 +14,9 @@ parameters {
   real<lower=0> phi;
   real mu_b;
   real<lower=0> sigma_b;
-  vector[number_segments] mu;
-  vector<lower=0>[number_segments] sigma;
-  vector[number_segments] theta_raw[k];
+  vector[number_segments - 1] mu;
+  vector<lower=0>[number_segments - 1] sigma ;
+  vector[number_segments - 1] theta_raw[k];
 }
 
 transformed parameters {
@@ -28,12 +27,14 @@ transformed parameters {
   vector<lower=0>[k] b;
   simplex[number_segments] prob_segment[k];
   
-  
-
   for (m in 1:k) { //k is number of participants
-    //b for participant ID: m
-    b[m] = exp(log_b_z[m] * sigma_b + mu_b);
-    prob_segment[m] = softmax(theta_raw[m]);
+      //prob_segment[m] = softmax(theta_raw[m]);
+      vector[number_segments] theta;
+      theta[:number_segments - 1] = mu + sigma .* theta_raw[m];
+      theta[number_segments] = 0;
+      prob_segment[m] = softmax(theta);
+      
+      b[m] = exp(log_b_z[m] * sigma_b + mu_b);
   }
 
   for (j in 1:number_segments) {
@@ -52,15 +53,13 @@ model {
   
   //prior for phi,b
   phi ~ cauchy(0,5);
+  //phi ~ normal(0,1);
   
   mu_b ~ normal(0,1);
-  //sigma_b ~ cauchy(0,1);
-  sigma_b ~ exponential(1);
-  // replace these with expo priors with mean of 1
+  sigma_b ~ cauchy(0,1);
   
   mu ~ normal(0,1);
-  //sigma~ cauchy(0,1);
-  sigma ~ exponential(1);
+  sigma ~ gamma(2,1);
 
   
   //model
@@ -68,7 +67,7 @@ model {
   
   for (m in 1:k){
     log_b_z[m] ~ normal(0, 1);
-    theta_raw[m] ~ normal(mu, sigma);
+    theta_raw[m] ~ std_normal();
   }
   
   for (i in 1:n){
